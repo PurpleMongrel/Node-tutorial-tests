@@ -1,0 +1,1326 @@
+maximmmofrewrwer
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+ maximmmofrewrwer
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+ maximmmofrewrwer
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+ maximmmofrewrwer
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14
+
+Sorted by:
+
+Highest score (default)
+
+3
+
+The answer is no, it's not possible in node 0.10.x and later. When stream is created, it is paused, so neither data nor end events can't be emitted. When you add data listener (but not end listener), the stream is automatically resumed.
+
+Also worth mentioning that no IO can occur before current "tick" ends, so if you attaching data listeners in the same tick is always safe, even for earlier node versions. For example:
+
+stream.resume();
+stream.on('data', ...); // <- same tick, same javascript invocation = safe
+
+stream.resume();
+setImmediate(function () {
+  stream.on('data', ...); // <- different tick, different javascript invocation = unsafe
+});
+It might sound confusing, but adding listener in process.nextTick callback is also safe because it's actually called right after CURRENT tick before any IO callback (a case of really bad naming).
+
+Share
+Improve this answer
+Follow
+edited Oct 23, 2014 at 13:11
+answered Oct 23, 2014 at 12:16
+user avatar
+vkurchatkin
+12.8k22 gold badges4242 silver badges5252 bronze badges
+From your first paragraph, it sounds like the 'end' event could still be lost, since the stream is resumed when I add the 'data' listener, and might be finished before I add the 'end' listener. I suppose what you say in the second paragraph prevents this, if both ons are guaranteed to be in the same tick. But what are the criteria for two statements to be executed in the same tick? – 
+njlarsson
+ Oct 23, 2014 at 12:40 
+That is correct, if you add data listener, but not end listener, you might miss it. Updated the answer – 
+vkurchatkin
+ Oct 23, 2014 at 13:18
+What I'm still confused about is what the criteria are for two statements to be executed in the same tick. From your example, I take it that on doesn't make the tick end, but setImmediate does. So what exactly makes a tick end? I couldn't find the answer to that by googling either, although I suppose it exists in some very long and deep texts out there. – 
+njlarsson
+ Oct 24, 2014 at 4:31
+Try this: console.log(new Error().stack). You will see current stack trace. When function returns, stack trace is reduced by one line (frame). When stack is empty, current tick ends. – 
+vkurchatkin
+ Oct 24, 2014 at 8:18
+So you're saying that no context switching takes place until the current chain of execution is completely exhausted? “Ticks” are like complete threads, executed in sequence? – 
+njlarsson
+ Oct 24, 2014 at 8:47 
+Show 1 more comment
+
+2
+
+The easiest way to think of this is that all the code you've provided is blocking therefore no activity can occur on the stream until the current tick ends as vkurchatkin explains. Only when the JavaScript execution for the current tick finishes can the stream IO begin.
+
+var fs = require('fs');
+var r = fs.createReadStream(#############
+
+
+
+
+
+
+
+
+
+
+
+
+###################process.argv[2], { encoding: 'utf8' });
+// Stream created in paused state, JS code is blocking IO
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('data', function (chunk) {
+  console.log("chunk: >>>" + chunk + "<<<");
+});
+
+// We're still in the current tick so no IO could have occured since the above lines
+r.on('end', function () {
+  console.log("This is the end");
+});
+
+// We've left the current tick so the internal IO code will now execute and call the bound events if necessary
+Share
+Improve this answer
+Follow
+answered Oct 23, 2014 at 18:08
+user avatar
+Evan Shortiss
+1,51311 gold badge99 silver badges1515 bronze badges
+But why have we left the current tick on the last line? The critical point is what triggers the tick end, if that's where the streaming begins. – 
+njlarsson
+ Oct 24, 2014 at 4:33
+1
+When no more events you have bound are being executed. In other words, once all JS code has finished executing the next tick can happen. This may not be the perfect technical explanation but it enough to understand the concept. – 
+Evan Shortiss
+ Oct 24, 2014 at 15:43 
+“Events you have bound”, that's some more terminology I'm not familiar with. Well, I understand the concept, I'll figure out what exactly happens (including with I/O waits and timers) some other time. – 
+njlarsson
+ Oct 26, 2014 at 14:14#############
+
+
+
+
+
+
+
+
+
+
+
+
+###################
