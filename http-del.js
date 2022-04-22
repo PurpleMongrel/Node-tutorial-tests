@@ -1,11 +1,12 @@
 const http = require('http');
 const server = http.createServer((req,res) => {
    if (req.url === '/'){
-      res.write('Ah yes... req.url === "/"');
+      
       res.end();
    }
    else {
-      res.write('using some other domain');
+      res.write(`req.url: ${req.url}`);
+      
       res.end();
    }
    /* res.writeHead(200, {"Content-Type": "text/html"});
